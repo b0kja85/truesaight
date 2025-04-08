@@ -6,6 +6,7 @@ class VideoProcessing(models.Model):
     its processing status, the result of the analysis, and any relevant metadata.
 
     Attributes:
+        processing_reference_number = a string that serves as a unique identifier for each record in the VideoProcessing model.
         video_file (FileField): The video file being processed.
         result (CharField): The result of the video analysis, either 'real' or 'fake'.
         confidence_score (FloatField): The confidence score indicating how confident the model is about the result.
@@ -16,6 +17,16 @@ class VideoProcessing(models.Model):
         processing_duration (DurationField): The total time taken to process the video (optional, can be null).
         error_message (TextField): Any error message generated if the processing fails (optional, can be null).
     """
+
+    # Unique Processing Reference Number  [Format REF - YEAR - MONTH - COUNT]
+    processing_reference_number = models.CharField(
+        max_length=50,
+        unique=True,
+        blank=False,
+        editable=False
+    )
+ 
+
     # Video file to be processed
     video_file = models.FileField(upload_to='videos/')
     
@@ -45,12 +56,19 @@ class VideoProcessing(models.Model):
     # Error message in case the processing fails 
     error_message = models.TextField(null=True, blank=True)
 
+    def save(self, *args, **kwargs):
+        if not self.processing_reference_number:
+            # Generate the reference number in the desired format
+            self.processing_reference_number = f"REF-{self.timestamp.year}-{self.id:04d}"
+        super().save(*args, **kwargs)
+
     def __str__(self):
         """
         Returns a string representation of the video processing task, 
-        including the video name, processing result, and current status.
+        including the video name, processing reference number,
+        processing result, and current status.
 
         Returns:
             str: String representation of the model instance.
         """
-        return f"Processing {self.video_file.name} - Result: {self.result} - Status: {self.status}"
+        return f"Processing {self.video_file.name} ({self.processing_reference_number}) - Result: {self.result} - Status: {self.status}"
