@@ -3,3 +3,6 @@ venv
 
 # Pycache
 __pycache__/
+
+# Media Files
+media/
