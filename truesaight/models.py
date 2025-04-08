@@ -18,11 +18,11 @@ class VideoProcessing(models.Model):
         error_message (TextField): Any error message generated if the processing fails (optional, can be null).
     """
 
-    # Unique Processing Reference Number  [Format REF - YEAR - MONTH - COUNT]
+    # Unique Processing Reference Number  [Format REF - YEAR - COUNT/ID]
     processing_reference_number = models.CharField(
         max_length=50,
         unique=True,
-        blank=False,
+        blank=True,
         editable=False
     )
  
@@ -57,6 +57,9 @@ class VideoProcessing(models.Model):
     error_message = models.TextField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
+        """
+        Modifies Save method in Django (models).
+        """
         if not self.processing_reference_number:
             # Generate the reference number in the desired format
             self.processing_reference_number = f"REF-{self.timestamp.year}-{self.id:04d}"
