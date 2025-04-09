@@ -56,15 +56,6 @@ class VideoProcessing(models.Model):
     # Error message in case the processing fails 
     error_message = models.TextField(null=True, blank=True)
 
-    # def save(self, *args, **kwargs):
-    #     """
-    #     Modifies Save method in Django (models).
-    #     """
-    #     if not self.processing_reference_number:
-    #         # Generate the reference number in the desired format
-    #         self.processing_reference_number = f"REF-{self.timestamp.year}-{self.id:04d}"
-    #     super().save(*args, **kwargs)
-
     def save(self, *args, **kwargs):
         """
         Modifies Save method in Django (models).
@@ -78,6 +69,7 @@ class VideoProcessing(models.Model):
 
         # Call the parent save method
         super().save(*args, **kwargs)
+
     def __str__(self):
         """
         Returns a string representation of the video processing task, 
