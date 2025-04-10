@@ -18,10 +18,12 @@ def process_video_task(video_id):
 
     duration = time.time() - start
 
+    # Allows to Render the processing template
+    time.sleep(5)
+
     video_task.result = result
     video_task.confidence_score = confidence
     video_task.processed_frames_count = frames_count
     video_task.processing_duration = timedelta(seconds=duration)
     video_task.status = 'completed'
     video_task.save()
-
