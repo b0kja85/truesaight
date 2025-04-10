@@ -6,3 +6,6 @@ __pycache__/
 
 # Media Files
 media/
+
+# Database
+db.sqlite3

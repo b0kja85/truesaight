@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="text-center mb-4">Video Analysis Result</h2>
+    <div class="text-center">
+        <video src="{{ video.video_file.url }}" controls width="640"></video>
+    </div>
+
+    <div class="mt-4 text-center">
+        <p><strong>Result:</strong> {{ video.result|title }}</p>
+        <p><strong>Confidence Score:</strong> {{ video.confidence_score }}%</p>
+        <p><strong>Processed Frames:</strong> {{ video.processed_frames_count }}</p>
+        <p><strong>Status:</strong> {{ video.status }}</p>
+    </div>
+</div>
+{% endblock %}
