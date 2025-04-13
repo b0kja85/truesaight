@@ -7,6 +7,7 @@ urlpatterns = [
     path('', views.home, name='home'),  # Homepage with Upload Form
     path('upload/', views.upload_video, name='upload_video'),  # Handle Upload POST
     path('processing/<int:pk>/', views.processing_view, name='processing'),  # Show loading spinner
+    path('video-status/<int:pk>/', views.get_video_status, name='video-status'), # Get Video Status
     path('result/<int:pk>/', views.result_view, name='result'),  # Final results
 ]
 
