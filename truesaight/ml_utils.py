@@ -3,28 +3,18 @@ import cv2
 import numpy as np
 from PIL import Image
 from facenet_pytorch import MTCNN, InceptionResnetV1
-from ml_model.model_architecture import DeepfakeModel # Import Deepfake Architecture
-from ml_model.losses import CombinedLoss # Import the Combined Loss
-import logging # For error logging
 import gc
 import os
 
 from django.conf import settings
 from .models import VideoProcessing
 
+from torchvision.transforms import Compose, Resize, ToTensor
+from ml_model.model_architecture import DeepfakeModel # Import Deepfake Architecture
+
 # Load face detection and embedding models
 mtcnn = MTCNN(image_size=160, margin=0)
 resnet = InceptionResnetV1(pretrained='vggface2').eval()
-
-# Recreate model instance
-custom_model = DeepfakeModel()
-
-# Load state dict
-state_dict = torch.load('ml_model/trained-model.pth', map_location=torch.device('cpu'))
-custom_model.load_state_dict(state_dict)
-
-# Set to evaluation mode
-custom_model.eval()
 
 
 # ==========================
@@ -108,136 +98,6 @@ def crop_face_with_margin(image, margin=FACE_MARGIN):
         # Fallback: return a centered square crop
         return central_crop(image)
 
-def main():
-    seq_len = 40
-    dropout_rate = 0.5
-    model = DeepfakeModel(seq_len=seq_len, dropout_rate=dropout_rate).to(device)
-
-    transform = Compose([
-        Resize((224, 224)),
-        ToTensor()
-    ])
-    
-    # Load data
-    test_dataset = DeepfakeDataset(
-        root_dir="/content/Deepfake-Thesis/data/Final-data/Testing",
-        transform=transform,
-        seq_len=seq_len
-    )
-
-    train_labels = [sample[0] for sample in train_dataset.labels]
-    num_pos = sum(train_labels)
-    num_neg = len(train_labels) - num_pos
-    ratio = num_neg / num_pos if num_pos > 0 else 1.0
-    pos_weight = torch.tensor([ratio], dtype=torch.float32).to(device)
-    print(f"Computed pos_weight (from training set): {pos_weight.item():.4f}")
-
-    criterion = CombinedLoss(
-        bce_weight=0.6,
-        jsd_weight=0.4,
-        pos_weight=pos_weight
-    )
-
-    batch_size = 8
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=4,  # Reduced to avoid overloading memory
-        pin_memory=True,
-        drop_last=True
-    )
-    test_dataloader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=4,  # Reduced as well
-        pin_memory=True,
-        drop_last=True
-    )
-
-    base_edge_index = create_chain_graph(seq_len).to(device)
-    
-    optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
-
-    num_epochs = 20
-    best_auc = 0.0
-
-    print("Starting training...")
-    for epoch in range(num_epochs):
-        start_time = time.time()
-
-        train_loss, train_acc, train_auc, train_f1, train_recall, train_frr, train_gar, train_precision = train_epoch(
-            model, train_dataloader, criterion, optimizer, device, base_edge_index, seq_len, grad_clip=5.0
-        )
-        val_loss, val_acc, val_auc, val_f1, val_recall, val_frr, val_gar, val_precision = evaluate_model(
-            model, test_dataloader, criterion, device, base_edge_index, seq_len
-        )
-        scheduler.step(val_loss)
-        epoch_time = time.time() - start_time
-        
-        results = {
-            'Epoch': epoch + 1,
-            'Training': {
-                'Training Loss': train_loss,
-                'Training Accuracy': train_acc,
-                'Training AUC': train_auc,
-                'Training F1-Score': train_f1,
-                'Training Recall': train_recall,
-                'Training FRR': train_frr,
-                'Training GAR': train_gar,
-                'Training Precision': train_precision
-            },
-            'Testing': {
-                'Val Loss': val_loss,
-                'Val Accuracy': val_acc,
-                'Val AUC': val_auc,
-                'Val F1-Score': val_f1,
-                'Val Recall': val_recall,
-                'Val FRR': val_frr,
-                'Val GAR': val_gar,
-                'Val Precision': val_precision
-            },
-            'Epoch Time': epoch_time
-        }
-
-        save_model_and_result(
-            model, 
-            results, 
-            model_filename=f"epoch-{epoch+1}-efficientgatgru-v1.pt", 
-            results_filename=f"epoch-{epoch+1}-efficientgatgru-v1.json"
-        )
-
-        print(f"\nEpoch {epoch+1}/{num_epochs} Summary:")
-        print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f} | Train AUC: {train_auc:.4f} | "
-              f"Train F1: {train_f1:.4f} | Train Recall: {train_recall:.4f} | Train FRR: {train_frr:.4f} | "
-              f"Train GAR: {train_gar:.4f} | Train Precision: {train_precision:.4f}")
-        print(f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.4f} | Val AUC: {val_auc:.4f} | Val F1: {val_f1:.4f} | "
-              f"Val Recall: {val_recall:.4f} | Val FRR: {val_frr:.4f} | Val GAR: {val_gar:.4f} | Val Precision: {val_precision:.4f}")
-        print(f"Epoch Time: {epoch_time / 60:.2f} minutes")
-
-        if val_auc > best_auc:
-            best_auc = val_auc
-            best_model_path = os.path.join(drive_output_dir, "models", f"best_efficientgatgru-v1_model_epoch_{epoch+1}_{current_date}.pt")
-            os.makedirs(os.path.dirname(best_model_path), exist_ok=True)
-            torch.save(model.state_dict(), best_model_path)
-            print(f"Best model updated and saved to {best_model_path}")
-
-    print("Training completed. Saving final model...")
-    final_model_path = os.path.join(drive_output_dir, "models", f"deepfake_model_final_{current_date}.pt")
-    os.makedirs(os.path.dirname(final_model_path), exist_ok=True)
-    torch.save(model.state_dict(), final_model_path)
-    print(f"Final model saved at {final_model_path}")
-
-import os
-import cv2
-import numpy as np
-import torch
-import logging
-import gc
-from django.conf import settings
-from .models import VideoProcessing
 
 def extract_face(video_path: str, video_instance: VideoProcessing):
     print(f"[DEBUG] Starting face extraction for video: {video_path}")
@@ -350,5 +210,60 @@ def extract_face(video_path: str, video_instance: VideoProcessing):
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-def run_deepfake_model(video_path: str):
-    return
+transform = Compose([
+    Resize((224, 224)),
+    ToTensor()
+])
+
+# Load processed frames (assuming they're saved as RGB .jpg files)
+def load_video_frames_as_tensor(folder_path, seq_len=40):
+    frames = []
+    for i in range(seq_len):
+        img_path = os.path.join(folder_path, f"frame_{i:05d}.jpg")
+        image = Image.open(img_path).convert("RGB")
+        frames.append(transform(image))
+
+    video_tensor = torch.stack(frames)  # Shape: (seq_len, 3, 224, 224)
+    video_tensor = video_tensor.unsqueeze(0)  # Add batch dim: (1, seq_len, 3, 224, 224)
+    return video_tensor
+
+def create_chain_graph(seq_len: int) -> torch.Tensor:
+    edge_list = []
+    for i in range(seq_len - 1):
+        edge_list.extend([[i, i+1], [i+1, i]])
+    return torch.tensor(edge_list, dtype=torch.long).t().contiguous()
+
+def create_batched_edge_index(base_edge_index, batch_size, num_nodes, device):
+    edge_index = base_edge_index.clone().repeat(1, batch_size)
+    offsets = torch.arange(batch_size, device=device) * num_nodes
+    num_edges_per_sample = base_edge_index.size(1)
+    offsets = offsets.unsqueeze(0).repeat(2, num_edges_per_sample)
+    edge_index += offsets
+    return edge_index
+
+def run_deepfake_model(video_path: str, instance_id: int):
+    seq_len = 40
+    dropout_rate = 0.5
+    custom_model = DeepfakeModel(seq_len=seq_len, dropout_rate=dropout_rate).to(device)
+
+    # Load the model from the saved state
+    model_path = 'ml_model/trained-model.pth'
+    custom_model.load_state_dict(torch.load(model_path, map_location=device))
+    custom_model.eval()  # Set model to evaluation mode
+    
+    threshold = 0.5
+    
+    frames_dir = os.path.join(settings.MEDIA_ROOT, 'extracted_frames', str(instance_id))
+    input_tensor = load_video_frames_as_tensor(frames_dir, seq_len=seq_len).to(device)
+    batch_size = input_tensor.size(0)
+
+    with torch.no_grad():
+        base_edge_index = create_chain_graph(seq_len).to(device)
+        batched_edge_index = create_batched_edge_index(base_edge_index, batch_size, seq_len, device)
+        output = custom_model(input_tensor, batched_edge_index)  
+        score = torch.sigmoid(output).item()
+        
+        # Use the dynamic threshold here
+        label = 'real' if score >= threshold else 'fake'
+        print(f"[DEBUG] Prediction Score: {score:.4f}, Label: {label}, Threshold: {threshold:.4f}")
+        return label, score
