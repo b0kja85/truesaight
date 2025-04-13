@@ -1,29 +1,32 @@
-import time
-from datetime import timedelta
 from .ml_utils import run_deepfake_model
+from .ml_utils import extract_face  
 from .models import VideoProcessing
 
 def process_video_task(video_id):
-    """
-    Given the ID of a VideoProcessing instance,
-    extract frames, run the ML model, and update the instance.
-    """
-    video_task = VideoProcessing.objects.get(id=video_id)
+    try:
+        # Get video object by primary key (video_id)
+        video_obj = VideoProcessing.objects.get(pk=video_id)
+        video_obj.status = 'processing'
+        video_obj.save()
 
-    video_task.status = 'processing'
-    video_task.save(update_fields=['status'])
+        # Get the file path
+        video_path = video_obj.video_file.path  # Make sure video_file is a FileField
 
-    start = time.time()
-    result, confidence, frames_count = run_deepfake_model(video_task.video_file.path)
+        # 🔍 STEP 1: Extract frames and save to disk
+        face_frames_path = extract_face(video_path, video_obj)
 
-    duration = time.time() - start
+        # 🔬 STEP 2: Run the deepfake detection model
+        result, confidence = run_deepfake_model(video_path=face_frames_path, instance_id=video_id)
 
-    # Allows to Render the processing template
-    time.sleep(5)
+        # ✅ STEP 3: Save results to the VideoProcessing model
+        video_obj.result = result
+        video_obj.confidence_score = confidence
+        video_obj.status = 'completed'
+        video_obj.save()
 
-    video_task.result = result
-    video_task.confidence_score = confidence
-    video_task.processed_frames_count = frames_count
-    video_task.processing_duration = timedelta(seconds=duration)
-    video_task.status = 'completed'
-    video_task.save()
+    except Exception as e:
+        # In case of an error, set status to failed and save error message
+        video_obj.status = 'failed'
+        video_obj.error_message = str(e)  # Ensure `error_message` exists in your model
+        video_obj.save()
+        print(f"[Error] Processing failed for Video ID {video_id}: {e}")
