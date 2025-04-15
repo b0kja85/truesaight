@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from .forms import VideoUploadForm
 from .models import VideoProcessing
-from .utils import process_video_task
+from .utils.app_utils import process_video_task
 from threading import Thread
 from django.http import JsonResponse
 from django.conf import settings
@@ -47,8 +47,6 @@ def processing_view(request, pk):
 
 def get_video_status(request, pk):
     video = get_object_or_404(VideoProcessing, pk=pk)
-    
-    # Return the current status of the video as JSON
     return JsonResponse({'status': video.status})
 
 def result_view(request, pk):
